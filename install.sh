@@ -28,9 +28,19 @@ case "$OS" in
 esac
 
 ASSET="awkto-${OS}-${ARCH}"
-URL="https://github.com/${REPO}/releases/latest/download/${ASSET}"
 
-echo "Downloading ${ASSET}..."
+# Get latest version tag from GitHub API
+VERSION=$(curl -fsSL "https://api.github.com/repos/${REPO}/releases?per_page=10" \
+  | grep -o '"tag_name": *"v[^"]*"' | head -1 | grep -o 'v[^"]*')
+
+if [ -z "$VERSION" ]; then
+  echo "Failed to determine latest version"
+  exit 1
+fi
+
+URL="https://github.com/${REPO}/releases/download/${VERSION}/${ASSET}"
+
+echo "Downloading ${ASSET} ${VERSION}..."
 TMP=$(mktemp)
 if ! curl -fSL "$URL" -o "$TMP"; then
   echo "Failed to download from $URL"
