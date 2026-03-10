@@ -110,7 +110,15 @@ _awkto_completions() {
             esac
             ;;
         *)
-            # Handle flags for subcommands and dynamic completion
+            # Complete -server flag value (check first, before flag suggestions)
+            if [[ "${prev}" == "-server" ]]; then
+                local servers
+                servers=$(awkto __complete_servers 2>/dev/null)
+                COMPREPLY=($(compgen -W "${servers}" -- "${cur}"))
+                return
+            fi
+
+            # Handle flags for subcommands
             case "${words[1]}" in
                 dns)
                     case "${words[2]}" in
@@ -131,13 +139,6 @@ _awkto_completions() {
                             return
                             ;;
                     esac
-                    # Complete -server flag value
-                    if [[ "${prev}" == "-server" ]]; then
-                        local servers
-                        servers=$(awkto __complete_servers 2>/dev/null)
-                        COMPREPLY=($(compgen -W "${servers}" -- "${cur}"))
-                        return
-                    fi
                     ;;
                 lease)
                     case "${words[2]}" in
@@ -154,12 +155,6 @@ _awkto_completions() {
                             return
                             ;;
                     esac
-                    if [[ "${prev}" == "-server" ]]; then
-                        local servers
-                        servers=$(awkto __complete_servers 2>/dev/null)
-                        COMPREPLY=($(compgen -W "${servers}" -- "${cur}"))
-                        return
-                    fi
                     ;;
                 reserve)
                     case "${words[2]}" in
@@ -180,12 +175,6 @@ _awkto_completions() {
                             return
                             ;;
                     esac
-                    if [[ "${prev}" == "-server" ]]; then
-                        local servers
-                        servers=$(awkto __complete_servers 2>/dev/null)
-                        COMPREPLY=($(compgen -W "${servers}" -- "${cur}"))
-                        return
-                    fi
                     ;;
                 server)
                     case "${words[2]}" in
