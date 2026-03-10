@@ -49,14 +49,14 @@ To load completions:
 `)
 }
 
-// runCompleteContexts prints context names one per line for shell completion.
-func runCompleteContexts() {
+// runCompleteServers prints server names one per line for shell completion.
+func runCompleteServers() {
 	cf, err := config.LoadConfigFile()
 	if err != nil {
 		os.Exit(0)
 	}
-	names := make([]string, 0, len(cf.Contexts))
-	for name := range cf.Contexts {
+	names := make([]string, 0, len(cf.Servers))
+	for name := range cf.Servers {
 		names = append(names, name)
 	}
 	sort.Strings(names)
@@ -71,11 +71,13 @@ _awkto_completions() {
     local cur prev words cword
     _init_completion || return
 
-    local commands="dns lease reserve config version help completion"
+    local commands="dns lease reserve server version help completion"
     local dns_actions="list create edit delete"
     local lease_actions="list delete promote"
     local reserve_actions="list create edit delete"
-    local config_actions="list use show add remove"
+    local server_actions="list dns kea add use remove show"
+    local server_dns_actions="list"
+    local server_kea_actions="list"
     local completion_actions="bash zsh"
 
     case "${cword}" in
@@ -97,8 +99,8 @@ _awkto_completions() {
                     COMPREPLY=($(compgen -W "${reserve_actions}" -- "${cur}"))
                     return
                     ;;
-                config)
-                    COMPREPLY=($(compgen -W "${config_actions}" -- "${cur}"))
+                server)
+                    COMPREPLY=($(compgen -W "${server_actions}" -- "${cur}"))
                     return
                     ;;
                 completion)
@@ -113,69 +115,96 @@ _awkto_completions() {
                 dns)
                     case "${words[2]}" in
                         create)
-                            COMPREPLY=($(compgen -W "-name -type -values -ttl" -- "${cur}"))
+                            COMPREPLY=($(compgen -W "-name -type -values -ttl -server" -- "${cur}"))
                             return
                             ;;
                         edit)
-                            COMPREPLY=($(compgen -W "-name -type -values -ttl" -- "${cur}"))
+                            COMPREPLY=($(compgen -W "-name -type -values -ttl -server" -- "${cur}"))
                             return
                             ;;
                         delete)
-                            COMPREPLY=($(compgen -W "-name -type" -- "${cur}"))
+                            COMPREPLY=($(compgen -W "-name -type -server" -- "${cur}"))
                             return
                             ;;
                         list)
-                            COMPREPLY=($(compgen -W "-filter" -- "${cur}"))
+                            COMPREPLY=($(compgen -W "-filter -server" -- "${cur}"))
                             return
                             ;;
                     esac
+                    # Complete -server flag value
+                    if [[ "${prev}" == "-server" ]]; then
+                        local servers
+                        servers=$(awkto __complete_servers 2>/dev/null)
+                        COMPREPLY=($(compgen -W "${servers}" -- "${cur}"))
+                        return
+                    fi
                     ;;
                 lease)
                     case "${words[2]}" in
                         list)
-                            COMPREPLY=($(compgen -W "-subnet" -- "${cur}"))
+                            COMPREPLY=($(compgen -W "-subnet -server" -- "${cur}"))
                             return
                             ;;
                         delete)
-                            COMPREPLY=($(compgen -W "-ip -mac" -- "${cur}"))
+                            COMPREPLY=($(compgen -W "-ip -mac -server" -- "${cur}"))
                             return
                             ;;
                         promote)
-                            COMPREPLY=($(compgen -W "-ip -hostname -subnet" -- "${cur}"))
+                            COMPREPLY=($(compgen -W "-ip -hostname -subnet -server" -- "${cur}"))
                             return
                             ;;
                     esac
+                    if [[ "${prev}" == "-server" ]]; then
+                        local servers
+                        servers=$(awkto __complete_servers 2>/dev/null)
+                        COMPREPLY=($(compgen -W "${servers}" -- "${cur}"))
+                        return
+                    fi
                     ;;
                 reserve)
                     case "${words[2]}" in
                         list)
-                            COMPREPLY=($(compgen -W "-subnet" -- "${cur}"))
+                            COMPREPLY=($(compgen -W "-subnet -server" -- "${cur}"))
                             return
                             ;;
                         create)
-                            COMPREPLY=($(compgen -W "-ip -mac -hostname -subnet" -- "${cur}"))
+                            COMPREPLY=($(compgen -W "-ip -mac -hostname -subnet -server" -- "${cur}"))
                             return
                             ;;
                         edit)
-                            COMPREPLY=($(compgen -W "-ip -mac -hostname -subnet" -- "${cur}"))
+                            COMPREPLY=($(compgen -W "-ip -mac -hostname -subnet -server" -- "${cur}"))
                             return
                             ;;
                         delete)
-                            COMPREPLY=($(compgen -W "-ip" -- "${cur}"))
+                            COMPREPLY=($(compgen -W "-ip -server" -- "${cur}"))
                             return
                             ;;
                     esac
+                    if [[ "${prev}" == "-server" ]]; then
+                        local servers
+                        servers=$(awkto __complete_servers 2>/dev/null)
+                        COMPREPLY=($(compgen -W "${servers}" -- "${cur}"))
+                        return
+                    fi
                     ;;
-                config)
+                server)
                     case "${words[2]}" in
                         add)
-                            COMPREPLY=($(compgen -W "--dns-url --dns-token --kea-url --kea-token --subnet-id" -- "${cur}"))
+                            COMPREPLY=($(compgen -W "--type --url --token --subnet-id" -- "${cur}"))
                             return
                             ;;
-                        use)
-                            local contexts
-                            contexts=$(awkto __complete_contexts 2>/dev/null)
-                            COMPREPLY=($(compgen -W "${contexts}" -- "${cur}"))
+                        use|remove)
+                            local servers
+                            servers=$(awkto __complete_servers 2>/dev/null)
+                            COMPREPLY=($(compgen -W "${servers}" -- "${cur}"))
+                            return
+                            ;;
+                        dns)
+                            COMPREPLY=($(compgen -W "${server_dns_actions}" -- "${cur}"))
+                            return
+                            ;;
+                        kea)
+                            COMPREPLY=($(compgen -W "${server_kea_actions}" -- "${cur}"))
                             return
                             ;;
                     esac
@@ -191,13 +220,13 @@ complete -F _awkto_completions awkto
 const zshCompletionScript = `#compdef awkto
 
 _awkto() {
-    local -a commands dns_actions lease_actions reserve_actions config_actions completion_actions
+    local -a commands dns_actions lease_actions reserve_actions server_actions completion_actions server_dns_actions server_kea_actions
 
     commands=(
         'dns:Manage DNS records'
         'lease:Manage DHCP leases'
         'reserve:Manage DHCP reservations'
-        'config:Manage CLI configuration contexts'
+        'server:Manage server configurations'
         'version:Print version'
         'help:Show help'
         'completion:Generate shell completion scripts'
@@ -223,12 +252,22 @@ _awkto() {
         'delete:Delete a reservation'
     )
 
-    config_actions=(
-        'list:List all contexts'
-        'use:Switch active context'
-        'show:Show current context details'
-        'add:Add a new context'
-        'remove:Remove a context'
+    server_actions=(
+        'list:List all servers'
+        'dns:List DNS servers'
+        'kea:List KEA servers'
+        'add:Add a new server'
+        'use:Set server as default for its type'
+        'remove:Remove a server'
+        'show:Show current defaults'
+    )
+
+    server_dns_actions=(
+        'list:List DNS servers'
+    )
+
+    server_kea_actions=(
+        'list:List KEA servers'
     )
 
     completion_actions=(
@@ -252,23 +291,27 @@ _awkto() {
                             '-name[Record name]:name:' \
                             '-type[Record type]:type:(A AAAA CNAME MX TXT SRV NS PTR)' \
                             '-values[Comma-separated values]:values:' \
-                            '-ttl[TTL in seconds]:ttl:'
+                            '-ttl[TTL in seconds]:ttl:' \
+                            '-server[Use a specific named server]:server:{local -a servers; servers=(${(f)"$(awkto __complete_servers 2>/dev/null)"}); _describe "servers" servers}'
                         ;;
                     edit)
                         _arguments \
                             '-name[Record name]:name:' \
                             '-type[Record type]:type:(A AAAA CNAME MX TXT SRV NS PTR)' \
                             '-values[Comma-separated values]:values:' \
-                            '-ttl[TTL in seconds]:ttl:'
+                            '-ttl[TTL in seconds]:ttl:' \
+                            '-server[Use a specific named server]:server:{local -a servers; servers=(${(f)"$(awkto __complete_servers 2>/dev/null)"}); _describe "servers" servers}'
                         ;;
                     delete)
                         _arguments \
                             '-name[Record name]:name:' \
-                            '-type[Record type]:type:(A AAAA CNAME MX TXT SRV NS PTR)'
+                            '-type[Record type]:type:(A AAAA CNAME MX TXT SRV NS PTR)' \
+                            '-server[Use a specific named server]:server:{local -a servers; servers=(${(f)"$(awkto __complete_servers 2>/dev/null)"}); _describe "servers" servers}'
                         ;;
                     list)
                         _arguments \
-                            '-filter[Filter by record type]:type:(A AAAA CNAME MX TXT SRV NS PTR)'
+                            '-filter[Filter by record type]:type:(A AAAA CNAME MX TXT SRV NS PTR)' \
+                            '-server[Use a specific named server]:server:{local -a servers; servers=(${(f)"$(awkto __complete_servers 2>/dev/null)"}); _describe "servers" servers}'
                         ;;
                 esac
             fi
@@ -279,18 +322,22 @@ _awkto() {
             else
                 case "${words[3]}" in
                     list)
-                        _arguments '-subnet[Subnet ID]:subnet:'
+                        _arguments \
+                            '-subnet[Subnet ID]:subnet:' \
+                            '-server[Use a specific named server]:server:{local -a servers; servers=(${(f)"$(awkto __complete_servers 2>/dev/null)"}); _describe "servers" servers}'
                         ;;
                     delete)
                         _arguments \
                             '-ip[IP address]:ip:' \
-                            '-mac[MAC address]:mac:'
+                            '-mac[MAC address]:mac:' \
+                            '-server[Use a specific named server]:server:{local -a servers; servers=(${(f)"$(awkto __complete_servers 2>/dev/null)"}); _describe "servers" servers}'
                         ;;
                     promote)
                         _arguments \
                             '-ip[IP address]:ip:' \
                             '-hostname[Hostname]:hostname:' \
-                            '-subnet[Subnet ID]:subnet:'
+                            '-subnet[Subnet ID]:subnet:' \
+                            '-server[Use a specific named server]:server:{local -a servers; servers=(${(f)"$(awkto __complete_servers 2>/dev/null)"}); _describe "servers" servers}'
                         ;;
                 esac
             fi
@@ -301,45 +348,60 @@ _awkto() {
             else
                 case "${words[3]}" in
                     list)
-                        _arguments '-subnet[Subnet ID]:subnet:'
+                        _arguments \
+                            '-subnet[Subnet ID]:subnet:' \
+                            '-server[Use a specific named server]:server:{local -a servers; servers=(${(f)"$(awkto __complete_servers 2>/dev/null)"}); _describe "servers" servers}'
                         ;;
                     create)
                         _arguments \
                             '-ip[IP address]:ip:' \
                             '-mac[MAC address]:mac:' \
                             '-hostname[Hostname]:hostname:' \
-                            '-subnet[Subnet ID]:subnet:'
+                            '-subnet[Subnet ID]:subnet:' \
+                            '-server[Use a specific named server]:server:{local -a servers; servers=(${(f)"$(awkto __complete_servers 2>/dev/null)"}); _describe "servers" servers}'
                         ;;
                     edit)
                         _arguments \
                             '-ip[IP address]:ip:' \
                             '-mac[MAC address]:mac:' \
                             '-hostname[Hostname]:hostname:' \
-                            '-subnet[Subnet ID]:subnet:'
+                            '-subnet[Subnet ID]:subnet:' \
+                            '-server[Use a specific named server]:server:{local -a servers; servers=(${(f)"$(awkto __complete_servers 2>/dev/null)"}); _describe "servers" servers}'
                         ;;
                     delete)
-                        _arguments '-ip[IP address]:ip:'
+                        _arguments \
+                            '-ip[IP address]:ip:' \
+                            '-server[Use a specific named server]:server:{local -a servers; servers=(${(f)"$(awkto __complete_servers 2>/dev/null)"}); _describe "servers" servers}'
                         ;;
                 esac
             fi
             ;;
-        config)
+        server)
             if (( CURRENT == 3 )); then
-                _describe -t config-actions 'config actions' config_actions
+                _describe -t server-actions 'server actions' server_actions
             else
                 case "${words[3]}" in
                     add)
                         _arguments \
-                            '--dns-url[DNS API base URL]:url:' \
-                            '--dns-token[DNS API bearer token]:token:' \
-                            '--kea-url[Kea API base URL]:url:' \
-                            '--kea-token[Kea API bearer token]:token:' \
+                            '--type[Server type]:type:(dns kea)' \
+                            '--url[Server URL]:url:' \
+                            '--token[Bearer token]:token:' \
                             '--subnet-id[DHCP subnet ID]:subnet:'
                         ;;
-                    use)
-                        local -a contexts
-                        contexts=(${(f)"$(awkto __complete_contexts 2>/dev/null)"})
-                        _describe -t contexts 'config contexts' contexts
+                    use|remove)
+                        local -a servers
+                        servers=(${(f)"$(awkto __complete_servers 2>/dev/null)"})
+                        _describe -t servers 'servers' servers
+                        ;;
+                    dns)
+                        if (( CURRENT == 4 )); then
+                            _describe -t server-dns-actions 'server dns actions' server_dns_actions
+                        fi
+                        ;;
+                    kea)
+                        if (( CURRENT == 4 )); then
+                            _describe -t server-kea-actions 'server kea actions' server_kea_actions
+                        fi
                         ;;
                 esac
             fi

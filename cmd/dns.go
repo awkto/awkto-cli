@@ -8,6 +8,7 @@ import (
 	"text/tabwriter"
 
 	"github.com/awkto/awkto-cli/internal/client"
+	"github.com/awkto/awkto-cli/internal/config"
 )
 
 func runDNS(args []string) {
@@ -16,20 +17,15 @@ func runDNS(args []string) {
 		os.Exit(1)
 	}
 
-	if err := cfg.RequireDNS(); err != nil {
-		exitErr(err)
-	}
-	c := client.NewDNSClient(cfg)
-
 	switch args[0] {
 	case "list":
-		dnsListCmd(c, args[1:])
+		dnsListCmd(args[1:])
 	case "create":
-		dnsCreateCmd(c, args[1:])
+		dnsCreateCmd(args[1:])
 	case "edit":
-		dnsEditCmd(c, args[1:])
+		dnsEditCmd(args[1:])
 	case "delete":
-		dnsDeleteCmd(c, args[1:])
+		dnsDeleteCmd(args[1:])
 	case "help", "--help", "-h":
 		printDNSUsage()
 	default:
@@ -54,13 +50,35 @@ Flags:
   -values   Comma-separated values (e.g. "192.168.1.1" or "192.168.1.1,192.168.1.2")
   -ttl      TTL in seconds (default: 300)
   -filter   Filter list by type (e.g. -filter A)
+  -server   Use a specific named server instead of the default
 `)
 }
 
-func dnsListCmd(c *client.DNSClient, args []string) {
+func loadDNSConfig(fs *flag.FlagSet) *config.Config {
+	var serverName string
+	fs.StringVar(&serverName, "server", "", "Use a specific named server")
+	return nil // placeholder; actual loading happens after Parse
+}
+
+func getDNSClient(fs *flag.FlagSet) *client.DNSClient {
+	serverName := fs.Lookup("server").Value.String()
+	cfg, err := config.LoadForDNS(serverName)
+	if err != nil {
+		exitErr(err)
+	}
+	if err := cfg.RequireDNS(); err != nil {
+		exitErr(err)
+	}
+	return client.NewDNSClient(cfg)
+}
+
+func dnsListCmd(args []string) {
 	fs := flag.NewFlagSet("dns list", flag.ExitOnError)
 	filterType := fs.String("filter", "", "Filter by record type")
+	fs.String("server", "", "Use a specific named server")
 	fs.Parse(args)
+
+	c := getDNSClient(fs)
 
 	records, err := c.ListRecords()
 	if err != nil {
@@ -78,12 +96,13 @@ func dnsListCmd(c *client.DNSClient, args []string) {
 	w.Flush()
 }
 
-func dnsCreateCmd(c *client.DNSClient, args []string) {
+func dnsCreateCmd(args []string) {
 	fs := flag.NewFlagSet("dns create", flag.ExitOnError)
 	name := fs.String("name", "", "Record name")
 	rtype := fs.String("type", "A", "Record type")
 	values := fs.String("values", "", "Comma-separated values")
 	ttl := fs.Int("ttl", 300, "TTL in seconds")
+	fs.String("server", "", "Use a specific named server")
 	fs.Parse(args)
 
 	if *name == "" || *values == "" {
@@ -91,6 +110,8 @@ func dnsCreateCmd(c *client.DNSClient, args []string) {
 		fs.Usage()
 		os.Exit(1)
 	}
+
+	c := getDNSClient(fs)
 
 	vals := splitValues(*values)
 	err := c.CreateRecord(client.DNSRecordCreate{
@@ -105,12 +126,13 @@ func dnsCreateCmd(c *client.DNSClient, args []string) {
 	fmt.Printf("Created %s record: %s -> %s\n", strings.ToUpper(*rtype), *name, *values)
 }
 
-func dnsEditCmd(c *client.DNSClient, args []string) {
+func dnsEditCmd(args []string) {
 	fs := flag.NewFlagSet("dns edit", flag.ExitOnError)
 	name := fs.String("name", "", "Record name")
 	rtype := fs.String("type", "", "Record type")
 	values := fs.String("values", "", "Comma-separated values")
 	ttl := fs.Int("ttl", 0, "TTL in seconds")
+	fs.String("server", "", "Use a specific named server")
 	fs.Parse(args)
 
 	if *name == "" || *rtype == "" {
@@ -118,6 +140,8 @@ func dnsEditCmd(c *client.DNSClient, args []string) {
 		fs.Usage()
 		os.Exit(1)
 	}
+
+	c := getDNSClient(fs)
 
 	update := client.DNSRecordUpdate{}
 	if *values != "" {
@@ -134,10 +158,11 @@ func dnsEditCmd(c *client.DNSClient, args []string) {
 	fmt.Printf("Updated %s record: %s\n", strings.ToUpper(*rtype), *name)
 }
 
-func dnsDeleteCmd(c *client.DNSClient, args []string) {
+func dnsDeleteCmd(args []string) {
 	fs := flag.NewFlagSet("dns delete", flag.ExitOnError)
 	name := fs.String("name", "", "Record name")
 	rtype := fs.String("type", "", "Record type")
+	fs.String("server", "", "Use a specific named server")
 	fs.Parse(args)
 
 	if *name == "" || *rtype == "" {
@@ -145,6 +170,8 @@ func dnsDeleteCmd(c *client.DNSClient, args []string) {
 		fs.Usage()
 		os.Exit(1)
 	}
+
+	c := getDNSClient(fs)
 
 	err := c.DeleteRecord(strings.ToUpper(*rtype), *name)
 	if err != nil {

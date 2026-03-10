@@ -16,20 +16,15 @@ func runReserve(args []string) {
 		os.Exit(1)
 	}
 
-	if err := cfg.RequireKea(); err != nil {
-		exitErr(err)
-	}
-	c := client.NewKeaClient(cfg)
-
 	switch args[0] {
 	case "list":
-		reserveListCmd(c, args[1:])
+		reserveListCmd(args[1:])
 	case "create":
-		reserveCreateCmd(c, args[1:])
+		reserveCreateCmd(args[1:])
 	case "delete":
-		reserveDeleteCmd(c, args[1:])
+		reserveDeleteCmd(args[1:])
 	case "edit":
-		reserveEditCmd(c, args[1:])
+		reserveEditCmd(args[1:])
 	case "help", "--help", "-h":
 		printReserveUsage()
 	default:
@@ -52,16 +47,25 @@ Flags:
   -ip         IP address
   -mac        MAC address (e.g. 52:54:00:ab:cd:ef)
   -hostname   Hostname
-  -subnet     Subnet ID (default: from AWKTO_SUBNET_ID or 1)
+  -subnet     Subnet ID (default: from config or 1)
+  -server     Use a specific named server instead of the default
 `)
 }
 
-func reserveListCmd(c *client.KeaClient, args []string) {
+func reserveListCmd(args []string) {
 	fs := flag.NewFlagSet("reserve list", flag.ExitOnError)
-	subnet := fs.String("subnet", cfg.SubnetID, "Subnet ID")
+	subnet := fs.String("subnet", "", "Subnet ID")
+	fs.String("server", "", "Use a specific named server")
 	fs.Parse(args)
 
-	reservations, err := c.ListReservations(*subnet)
+	c, cfg := getKeaClient(fs)
+
+	subnetVal := *subnet
+	if subnetVal == "" {
+		subnetVal = cfg.SubnetID
+	}
+
+	reservations, err := c.ListReservations(subnetVal)
 	if err != nil {
 		exitErr(err)
 	}
@@ -79,12 +83,13 @@ func reserveListCmd(c *client.KeaClient, args []string) {
 	w.Flush()
 }
 
-func reserveCreateCmd(c *client.KeaClient, args []string) {
+func reserveCreateCmd(args []string) {
 	fs := flag.NewFlagSet("reserve create", flag.ExitOnError)
 	ip := fs.String("ip", "", "IP address")
 	mac := fs.String("mac", "", "MAC address")
 	hostname := fs.String("hostname", "", "Hostname")
-	subnet := fs.String("subnet", cfg.SubnetID, "Subnet ID")
+	subnet := fs.String("subnet", "", "Subnet ID")
+	fs.String("server", "", "Use a specific named server")
 	fs.Parse(args)
 
 	if *ip == "" || *mac == "" || *hostname == "" {
@@ -93,7 +98,14 @@ func reserveCreateCmd(c *client.KeaClient, args []string) {
 		os.Exit(1)
 	}
 
-	subnetID, _ := strconv.Atoi(*subnet)
+	c, cfg := getKeaClient(fs)
+
+	subnetVal := *subnet
+	if subnetVal == "" {
+		subnetVal = cfg.SubnetID
+	}
+
+	subnetID, _ := strconv.Atoi(subnetVal)
 	err := c.CreateReservation(client.ReservationCreate{
 		IPAddress: *ip,
 		HWAddress: *mac,
@@ -106,9 +118,10 @@ func reserveCreateCmd(c *client.KeaClient, args []string) {
 	fmt.Printf("Created reservation: %s (%s) -> %s\n", *ip, *mac, *hostname)
 }
 
-func reserveDeleteCmd(c *client.KeaClient, args []string) {
+func reserveDeleteCmd(args []string) {
 	fs := flag.NewFlagSet("reserve delete", flag.ExitOnError)
 	ip := fs.String("ip", "", "IP address")
+	fs.String("server", "", "Use a specific named server")
 	fs.Parse(args)
 
 	if *ip == "" {
@@ -117,18 +130,21 @@ func reserveDeleteCmd(c *client.KeaClient, args []string) {
 		os.Exit(1)
 	}
 
+	c, _ := getKeaClient(fs)
+
 	if err := c.DeleteReservation(*ip); err != nil {
 		exitErr(err)
 	}
 	fmt.Printf("Deleted reservation: %s\n", *ip)
 }
 
-func reserveEditCmd(c *client.KeaClient, args []string) {
+func reserveEditCmd(args []string) {
 	fs := flag.NewFlagSet("reserve edit", flag.ExitOnError)
 	ip := fs.String("ip", "", "IP address of existing reservation")
 	mac := fs.String("mac", "", "New MAC address")
 	hostname := fs.String("hostname", "", "New hostname")
-	subnet := fs.String("subnet", cfg.SubnetID, "Subnet ID")
+	subnet := fs.String("subnet", "", "Subnet ID")
+	fs.String("server", "", "Use a specific named server")
 	fs.Parse(args)
 
 	if *ip == "" {
@@ -143,8 +159,15 @@ func reserveEditCmd(c *client.KeaClient, args []string) {
 		os.Exit(1)
 	}
 
+	c, cfg := getKeaClient(fs)
+
+	subnetVal := *subnet
+	if subnetVal == "" {
+		subnetVal = cfg.SubnetID
+	}
+
 	// Get current reservation to fill in unchanged fields
-	reservations, err := c.ListReservations(*subnet)
+	reservations, err := c.ListReservations(subnetVal)
 	if err != nil {
 		exitErr(err)
 	}
@@ -174,7 +197,7 @@ func reserveEditCmd(c *client.KeaClient, args []string) {
 		newHostname = *hostname
 	}
 
-	subnetID, _ := strconv.Atoi(*subnet)
+	subnetID, _ := strconv.Atoi(subnetVal)
 	err = c.CreateReservation(client.ReservationCreate{
 		IPAddress: *ip,
 		HWAddress: newMAC,

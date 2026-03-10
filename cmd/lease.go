@@ -8,6 +8,7 @@ import (
 	"text/tabwriter"
 
 	"github.com/awkto/awkto-cli/internal/client"
+	"github.com/awkto/awkto-cli/internal/config"
 )
 
 func runLease(args []string) {
@@ -16,18 +17,13 @@ func runLease(args []string) {
 		os.Exit(1)
 	}
 
-	if err := cfg.RequireKea(); err != nil {
-		exitErr(err)
-	}
-	c := client.NewKeaClient(cfg)
-
 	switch args[0] {
 	case "list":
-		leaseListCmd(c, args[1:])
+		leaseListCmd(args[1:])
 	case "delete":
-		leaseDeleteCmd(c, args[1:])
+		leaseDeleteCmd(args[1:])
 	case "promote":
-		leasePromoteCmd(c, args[1:])
+		leasePromoteCmd(args[1:])
 	case "help", "--help", "-h":
 		printLeaseUsage()
 	default:
@@ -49,16 +45,37 @@ Flags:
   -ip         IP address
   -mac        MAC address
   -hostname   Hostname for promoted reservation
-  -subnet     Subnet ID (default: from AWKTO_SUBNET_ID or 1)
+  -subnet     Subnet ID (default: from config or 1)
+  -server     Use a specific named server instead of the default
 `)
 }
 
-func leaseListCmd(c *client.KeaClient, args []string) {
+func getKeaClient(fs *flag.FlagSet) (*client.KeaClient, *config.Config) {
+	serverName := fs.Lookup("server").Value.String()
+	cfg, err := config.LoadForKea(serverName)
+	if err != nil {
+		exitErr(err)
+	}
+	if err := cfg.RequireKea(); err != nil {
+		exitErr(err)
+	}
+	return client.NewKeaClient(cfg), cfg
+}
+
+func leaseListCmd(args []string) {
 	fs := flag.NewFlagSet("lease list", flag.ExitOnError)
-	subnet := fs.String("subnet", cfg.SubnetID, "Subnet ID")
+	subnet := fs.String("subnet", "", "Subnet ID")
+	fs.String("server", "", "Use a specific named server")
 	fs.Parse(args)
 
-	leases, err := c.ListLeases(*subnet)
+	c, cfg := getKeaClient(fs)
+
+	subnetVal := *subnet
+	if subnetVal == "" {
+		subnetVal = cfg.SubnetID
+	}
+
+	leases, err := c.ListLeases(subnetVal)
 	if err != nil {
 		exitErr(err)
 	}
@@ -82,10 +99,11 @@ func leaseListCmd(c *client.KeaClient, args []string) {
 	w.Flush()
 }
 
-func leaseDeleteCmd(c *client.KeaClient, args []string) {
+func leaseDeleteCmd(args []string) {
 	fs := flag.NewFlagSet("lease delete", flag.ExitOnError)
 	ip := fs.String("ip", "", "IP address")
 	mac := fs.String("mac", "", "MAC address")
+	fs.String("server", "", "Use a specific named server")
 	fs.Parse(args)
 
 	if *ip == "" && *mac == "" {
@@ -93,6 +111,8 @@ func leaseDeleteCmd(c *client.KeaClient, args []string) {
 		fs.Usage()
 		os.Exit(1)
 	}
+
+	c, _ := getKeaClient(fs)
 
 	if *ip != "" {
 		if err := c.DeleteLeaseByIP(*ip); err != nil {
@@ -108,11 +128,12 @@ func leaseDeleteCmd(c *client.KeaClient, args []string) {
 	}
 }
 
-func leasePromoteCmd(c *client.KeaClient, args []string) {
+func leasePromoteCmd(args []string) {
 	fs := flag.NewFlagSet("lease promote", flag.ExitOnError)
 	ip := fs.String("ip", "", "IP address of the lease to promote")
 	hostname := fs.String("hostname", "", "Hostname for the reservation")
-	subnet := fs.String("subnet", cfg.SubnetID, "Subnet ID")
+	subnet := fs.String("subnet", "", "Subnet ID")
+	fs.String("server", "", "Use a specific named server")
 	fs.Parse(args)
 
 	if *ip == "" {
@@ -121,8 +142,15 @@ func leasePromoteCmd(c *client.KeaClient, args []string) {
 		os.Exit(1)
 	}
 
+	c, cfg := getKeaClient(fs)
+
+	subnetVal := *subnet
+	if subnetVal == "" {
+		subnetVal = cfg.SubnetID
+	}
+
 	// Find the lease to get its MAC address
-	leases, err := c.ListLeases(*subnet)
+	leases, err := c.ListLeases(subnetVal)
 	if err != nil {
 		exitErr(err)
 	}
@@ -146,7 +174,7 @@ func leasePromoteCmd(c *client.KeaClient, args []string) {
 		exitErr(fmt.Errorf("no hostname found on lease and none provided with -hostname"))
 	}
 
-	subnetID, _ := strconv.Atoi(*subnet)
+	subnetID, _ := strconv.Atoi(subnetVal)
 	err = c.CreateReservation(client.ReservationCreate{
 		IPAddress: found.IPAddress,
 		HWAddress: found.HWAddress,

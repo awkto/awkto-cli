@@ -3,22 +3,11 @@ package cmd
 import (
 	"fmt"
 	"os"
-
-	"github.com/awkto/awkto-cli/internal/config"
 )
 
 var Version = "dev"
 
-var cfg *config.Config
-
 func Execute() {
-	var err error
-	cfg, err = config.Load()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error loading config: %v\n", err)
-		os.Exit(1)
-	}
-
 	if len(os.Args) < 2 {
 		printUsage()
 		os.Exit(1)
@@ -31,12 +20,12 @@ func Execute() {
 		runLease(os.Args[2:])
 	case "reserve":
 		runReserve(os.Args[2:])
-	case "config":
-		runConfig(os.Args[2:])
+	case "server":
+		runServer(os.Args[2:])
 	case "completion":
 		runCompletion(os.Args[2:])
-	case "__complete_contexts":
-		runCompleteContexts()
+	case "__complete_servers":
+		runCompleteServers()
 	case "version":
 		fmt.Printf("awkto %s\n", Version)
 	case "help", "--help", "-h":
@@ -58,14 +47,14 @@ Commands:
   dns       Manage DNS records (create, list, delete, edit)
   lease     Manage DHCP leases (list, delete, promote)
   reserve   Manage DHCP reservations (list, create, delete, edit)
-  config    Manage CLI configuration contexts
+  server    Manage server configurations
   completion  Generate shell completion scripts (bash, zsh)
   version   Print version
 
 Configuration:
   Config is loaded from ~/.awkto/config.yaml (override with AWKTO_CONFIG env var).
-  Use 'awkto config add <name>' to create contexts and 'awkto config use <name>'
-  to switch between them. See 'awkto config --help' for details.
+  Use 'awkto server add <name>' to create servers and 'awkto server use <name>'
+  to set defaults. See 'awkto server --help' for details.
 
 Environment Variables (override config file values):
   AWKTO_KEA_URL      Kea API base URL (e.g. https://kea.example.com:8080)

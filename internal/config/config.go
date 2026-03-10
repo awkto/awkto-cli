@@ -8,6 +8,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// Config is the resolved runtime configuration used by commands.
 type Config struct {
 	KeaURL   string
 	KeaToken string
@@ -16,17 +17,18 @@ type Config struct {
 	SubnetID string
 }
 
-type Context struct {
-	DNSURL   string `yaml:"dns_url,omitempty"`
-	DNSToken string `yaml:"dns_token,omitempty"`
-	KeaURL   string `yaml:"kea_url,omitempty"`
-	KeaToken string `yaml:"kea_token,omitempty"`
+// Server represents a single server entry in the config file.
+type Server struct {
+	Type     string `yaml:"type"`
+	URL      string `yaml:"url"`
+	Token    string `yaml:"token,omitempty"`
 	SubnetID string `yaml:"subnet_id,omitempty"`
 }
 
+// ConfigFile represents the on-disk config file structure.
 type ConfigFile struct {
-	CurrentContext string             `yaml:"current-context"`
-	Contexts       map[string]Context `yaml:"contexts"`
+	Defaults map[string]string    `yaml:"defaults,omitempty"`
+	Servers  map[string]Server    `yaml:"servers,omitempty"`
 }
 
 func ConfigFilePath() string {
@@ -43,13 +45,19 @@ func ConfigFilePath() string {
 func LoadConfigFile() (*ConfigFile, error) {
 	path := ConfigFilePath()
 	if path == "" {
-		return &ConfigFile{Contexts: make(map[string]Context)}, nil
+		return &ConfigFile{
+			Defaults: make(map[string]string),
+			Servers:  make(map[string]Server),
+		}, nil
 	}
 
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return &ConfigFile{Contexts: make(map[string]Context)}, nil
+			return &ConfigFile{
+				Defaults: make(map[string]string),
+				Servers:  make(map[string]Server),
+			}, nil
 		}
 		return nil, fmt.Errorf("read config file: %w", err)
 	}
@@ -58,8 +66,11 @@ func LoadConfigFile() (*ConfigFile, error) {
 	if err := yaml.Unmarshal(data, &cf); err != nil {
 		return nil, fmt.Errorf("parse config file: %w", err)
 	}
-	if cf.Contexts == nil {
-		cf.Contexts = make(map[string]Context)
+	if cf.Defaults == nil {
+		cf.Defaults = make(map[string]string)
+	}
+	if cf.Servers == nil {
+		cf.Servers = make(map[string]Server)
 	}
 	return &cf, nil
 }
@@ -86,27 +97,70 @@ func SaveConfigFile(cf *ConfigFile) error {
 	return nil
 }
 
+// Load returns the resolved Config using default servers from the config file,
+// with env vars as highest-priority overrides.
 func Load() (*Config, error) {
+	return loadForType("", "")
+}
+
+// LoadForDNS loads configuration for a DNS command.
+// If serverName is non-empty, it loads that specific server and validates it is type "dns".
+// Otherwise it uses the default dns server from the config file.
+// Env vars always override.
+func LoadForDNS(serverName string) (*Config, error) {
+	return loadForType(serverName, "dns")
+}
+
+// LoadForKea loads configuration for a Kea command.
+// If serverName is non-empty, it loads that specific server and validates it is type "kea".
+// Otherwise it uses the default kea server from the config file.
+// Env vars always override.
+func LoadForKea(serverName string) (*Config, error) {
+	return loadForType(serverName, "kea")
+}
+
+func loadForType(serverName string, requiredType string) (*Config, error) {
 	c := &Config{}
 
-	// First, try loading from config file
 	cf, err := LoadConfigFile()
 	if err != nil {
 		return nil, err
 	}
 
-	if cf.CurrentContext != "" {
-		ctx, ok := cf.Contexts[cf.CurrentContext]
-		if ok {
-			c.DNSURL = ctx.DNSURL
-			c.DNSToken = ctx.DNSToken
-			c.KeaURL = ctx.KeaURL
-			c.KeaToken = ctx.KeaToken
-			c.SubnetID = ctx.SubnetID
+	if serverName != "" {
+		// Load a specific named server
+		srv, ok := cf.Servers[serverName]
+		if !ok {
+			return nil, fmt.Errorf("server %q not found", serverName)
+		}
+		if requiredType != "" && srv.Type != requiredType {
+			return nil, fmt.Errorf("server %q is type %s, but this command requires %s", serverName, srv.Type, requiredType)
+		}
+		applyServer(c, srv)
+	} else {
+		// Load defaults for the required type(s)
+		if requiredType == "" || requiredType == "dns" {
+			if defaultName, ok := cf.Defaults["dns"]; ok && defaultName != "" {
+				if srv, ok := cf.Servers[defaultName]; ok {
+					c.DNSURL = srv.URL
+					c.DNSToken = srv.Token
+				}
+			}
+		}
+		if requiredType == "" || requiredType == "kea" {
+			if defaultName, ok := cf.Defaults["kea"]; ok && defaultName != "" {
+				if srv, ok := cf.Servers[defaultName]; ok {
+					c.KeaURL = srv.URL
+					c.KeaToken = srv.Token
+					if srv.SubnetID != "" {
+						c.SubnetID = srv.SubnetID
+					}
+				}
+			}
 		}
 	}
 
-	// Then, let env vars override
+	// Env vars always override
 	if v := os.Getenv("AWKTO_DNS_URL"); v != "" {
 		c.DNSURL = v
 	}
@@ -130,16 +184,30 @@ func Load() (*Config, error) {
 	return c, nil
 }
 
+func applyServer(c *Config, srv Server) {
+	switch srv.Type {
+	case "dns":
+		c.DNSURL = srv.URL
+		c.DNSToken = srv.Token
+	case "kea":
+		c.KeaURL = srv.URL
+		c.KeaToken = srv.Token
+		if srv.SubnetID != "" {
+			c.SubnetID = srv.SubnetID
+		}
+	}
+}
+
 func (c *Config) RequireKea() error {
 	if c.KeaURL == "" {
-		return fmt.Errorf("AWKTO_KEA_URL is not set (set via env var or config context)")
+		return fmt.Errorf("AWKTO_KEA_URL is not set (set via env var or configure a kea server with 'awkto server add')")
 	}
 	return nil
 }
 
 func (c *Config) RequireDNS() error {
 	if c.DNSURL == "" {
-		return fmt.Errorf("AWKTO_DNS_URL is not set (set via env var or config context)")
+		return fmt.Errorf("AWKTO_DNS_URL is not set (set via env var or configure a dns server with 'awkto server add')")
 	}
 	return nil
 }
