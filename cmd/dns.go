@@ -151,6 +151,15 @@ func dnsEditCmd(args []string) {
 		update.TTL = *ttl
 	}
 
+	// If only TTL is being changed, fetch existing values
+	if len(update.Values) == 0 {
+		existing, err := c.GetRecord(strings.ToUpper(*rtype), *name)
+		if err != nil {
+			exitErr(err)
+		}
+		update.Values = existing.Values
+	}
+
 	err := c.UpdateRecord(strings.ToUpper(*rtype), *name, update)
 	if err != nil {
 		exitErr(err)

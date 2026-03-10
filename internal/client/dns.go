@@ -71,6 +71,19 @@ func (c *DNSClient) CreateRecord(r DNSRecordCreate) error {
 	return nil
 }
 
+func (c *DNSClient) GetRecord(recordType, name string) (*DNSRecord, error) {
+	records, err := c.ListRecords()
+	if err != nil {
+		return nil, err
+	}
+	for _, r := range records {
+		if r.Name == name && r.Type == recordType {
+			return &r, nil
+		}
+	}
+	return nil, fmt.Errorf("record %s (%s) not found", name, recordType)
+}
+
 func (c *DNSClient) UpdateRecord(recordType, name string, update DNSRecordUpdate) error {
 	url := fmt.Sprintf("%s/api/records/%s/%s", c.url, recordType, name)
 	body, status, err := doRequest(http.MethodPut, url, c.token, update)
