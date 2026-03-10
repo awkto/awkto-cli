@@ -31,6 +31,8 @@ func Execute() {
 		runLease(os.Args[2:])
 	case "reserve":
 		runReserve(os.Args[2:])
+	case "config":
+		runConfig(os.Args[2:])
 	case "version":
 		fmt.Printf("awkto %s\n", Version)
 	case "help", "--help", "-h":
@@ -52,14 +54,21 @@ Commands:
   dns       Manage DNS records (create, list, delete, edit)
   lease     Manage DHCP leases (list, delete, promote)
   reserve   Manage DHCP reservations (list, create, delete, edit)
+  config    Manage CLI configuration contexts
   version   Print version
 
-Environment Variables:
+Configuration:
+  Config is loaded from ~/.awkto/config.yaml (override with AWKTO_CONFIG env var).
+  Use 'awkto config add <name>' to create contexts and 'awkto config use <name>'
+  to switch between them. See 'awkto config --help' for details.
+
+Environment Variables (override config file values):
   AWKTO_KEA_URL      Kea API base URL (e.g. https://kea.example.com:8080)
   AWKTO_KEA_TOKEN    Kea API bearer token
   AWKTO_DNS_URL      DNS API base URL (e.g. https://dns.example.com)
   AWKTO_DNS_TOKEN    DNS API bearer token
   AWKTO_SUBNET_ID    DHCP subnet ID (default: 1)
+  AWKTO_CONFIG       Path to config file (default: ~/.awkto/config.yaml)
 
 Run 'awkto <command> --help' for more information on a command.
 `, Version)
