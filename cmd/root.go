@@ -33,6 +33,10 @@ func Execute() {
 		runReserve(os.Args[2:])
 	case "config":
 		runConfig(os.Args[2:])
+	case "completion":
+		runCompletion(os.Args[2:])
+	case "__complete_contexts":
+		runCompleteContexts()
 	case "version":
 		fmt.Printf("awkto %s\n", Version)
 	case "help", "--help", "-h":
@@ -55,6 +59,7 @@ Commands:
   lease     Manage DHCP leases (list, delete, promote)
   reserve   Manage DHCP reservations (list, create, delete, edit)
   config    Manage CLI configuration contexts
+  completion  Generate shell completion scripts (bash, zsh)
   version   Print version
 
 Configuration:
