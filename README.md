@@ -12,14 +12,46 @@ Or download a specific version from [Releases](https://github.com/awkto/awkto-cl
 
 ## Configuration
 
-Set these environment variables (e.g. in `~/.bashrc` or `~/.zshrc`):
+### Quick Setup
+
+Add and configure your servers using the CLI:
 
 ```bash
-export AWKTO_KEA_URL="https://kea.example.com:8080"
-export AWKTO_KEA_TOKEN="your-kea-token"
-export AWKTO_DNS_URL="https://dns.example.com"
-export AWKTO_DNS_TOKEN="your-dns-token"
-export AWKTO_SUBNET_ID="1"  # optional, defaults to 1
+# Add a DNS server
+awkto server add mydns --type dns --url https://dns.example.com --token your-dns-token
+
+# Add a KEA DHCP server
+awkto server add mykea --type kea --url https://kea.example.com:8080 --token your-kea-token --subnet-id 1
+
+# Set default servers (optional, if you have multiple)
+awkto server default dns mydns
+awkto server default kea mykea
+```
+
+This creates a config file at `~/.awkto/config.yaml`. You can use a custom location by setting:
+
+```bash
+export AWKTO_CONFIG=/path/to/your/config.yaml
+```
+
+### Config File Format
+
+The config file (`~/.awkto/config.yaml`) has this structure:
+
+```yaml
+defaults:
+  dns: mydns
+  kea: mykea
+servers:
+  mydns:
+    type: dns
+    url: https://dns.example.com
+    token: your-dns-token
+  mykea:
+    type: kea
+    url: https://kea.example.com:8080
+    token: your-kea-token
+    subnet_id: "1"
 ```
 
 ## Usage

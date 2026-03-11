@@ -160,23 +160,6 @@ func loadForType(serverName string, requiredType string) (*Config, error) {
 		}
 	}
 
-	// Env vars always override
-	if v := os.Getenv("AWKTO_DNS_URL"); v != "" {
-		c.DNSURL = v
-	}
-	if v := os.Getenv("AWKTO_DNS_TOKEN"); v != "" {
-		c.DNSToken = v
-	}
-	if v := os.Getenv("AWKTO_KEA_URL"); v != "" {
-		c.KeaURL = v
-	}
-	if v := os.Getenv("AWKTO_KEA_TOKEN"); v != "" {
-		c.KeaToken = v
-	}
-	if v := os.Getenv("AWKTO_SUBNET_ID"); v != "" {
-		c.SubnetID = v
-	}
-
 	if c.SubnetID == "" {
 		c.SubnetID = "1"
 	}
@@ -200,14 +183,14 @@ func applyServer(c *Config, srv Server) {
 
 func (c *Config) RequireKea() error {
 	if c.KeaURL == "" {
-		return fmt.Errorf("AWKTO_KEA_URL is not set (set via env var or configure a kea server with 'awkto server add')")
+		return fmt.Errorf("no kea server configured (configure with 'awkto server add')")
 	}
 	return nil
 }
 
 func (c *Config) RequireDNS() error {
 	if c.DNSURL == "" {
-		return fmt.Errorf("AWKTO_DNS_URL is not set (set via env var or configure a dns server with 'awkto server add')")
+		return fmt.Errorf("no dns server configured (configure with 'awkto server add')")
 	}
 	return nil
 }
